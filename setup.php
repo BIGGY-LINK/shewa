@@ -20,7 +20,9 @@ if ($isVercel) {
             && (int) db()->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn() > 0;
     } catch (Throwable $exception) {
         error_log('SHEWA setup status error: ' . $exception->getMessage());
-        $error = 'Cannot reach the configured MySQL database. Check your Vercel database environment variables.';
+        $error = $exception instanceof PDOException && $exception->getCode() === '42S02'
+            ? 'The configured database is reachable and will be initialized when you create the first administrator.'
+            : 'Cannot reach the configured MySQL database. Check your Vercel database environment variables.';
     }
 }
 

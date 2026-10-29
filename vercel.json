@@ -11,18 +11,18 @@
     },
     {
       "src": "/.*\\.php$",
-      "dest": "/api/index.php"
+      "dest": "/api/index.php?route=$0"
     },
     {
       "src": "/",
-      "dest": "/api/index.php"
+      "dest": "/api/index.php?route=/"
     },
     {
       "handle": "filesystem"
     },
     {
       "src": "/(.*)",
-      "dest": "/api/index.php"
+      "dest": "/api/index.php?route=$1"
     }
   ]
 }

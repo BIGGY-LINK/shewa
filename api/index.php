@@ -1,8 +1,11 @@
 <?php
 declare(strict_types=1);
 
-$requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+$requestPath = $_GET['route'] ?? parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 $requestPath = is_string($requestPath) ? rawurldecode($requestPath) : '/';
+if ($requestPath !== '' && $requestPath[0] !== '/') {
+    $requestPath = '/' . $requestPath;
+}
 
 $pages = [
     '/' => '/index.php',
