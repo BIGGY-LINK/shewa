@@ -3,14 +3,26 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/includes/bootstrap.php';
 
-if (!in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true)) {
+$isVercel = getenv('VERCEL') === '1';
+if (!$isVercel && !in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true)) {
     http_response_code(404);
     exit;
 }
 
 $lockFile = __DIR__ . '/.shewa-installed';
 $error = '';
-$complete = is_file($lockFile);
+$complete = !$isVercel && is_file($lockFile);
+
+if ($isVercel) {
+    try {
+        $tableExists = db()->query("SHOW TABLES LIKE 'users'")->fetchColumn() !== false;
+        $complete = $tableExists
+            && (int) db()->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn() > 0;
+    } catch (Throwable $exception) {
+        error_log('SHEWA setup status error: ' . $exception->getMessage());
+        $error = 'Cannot reach the configured MySQL database. Check your Vercel database environment variables.';
+    }
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$complete) {
     verify_csrf();
@@ -18,15 +30,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$complete) {
     $name = trim((string) ($_POST['name'] ?? ''));
     $email = strtolower(trim((string) ($_POST['email'] ?? '')));
     $password = (string) ($_POST['password'] ?? '');
+    $setupSecret = getenv('SHEWA_SETUP_SECRET');
+    $providedSetupSecret = (string) ($_POST['setup_secret'] ?? '');
 
-    if ($name === '' || strlen($name) > 100 || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 190) {
+    if ($isVercel && ($setupSecret === false || $setupSecret === '' || !hash_equals($setupSecret, $providedSetupSecret))) {
+        $error = 'Enter the setup secret configured for this Vercel deployment.';
+    } elseif ($name === '' || strlen($name) > 100 || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 190) {
         $error = 'Enter a name and a valid email address.';
     } elseif (strlen($password) < 12) {
         $error = 'Choose an administrator password with at least 12 characters.';
     } else {
         try {
-            $server = db_server();
-            $server->exec('CREATE DATABASE IF NOT EXISTS `SHEWA` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+            if (!$isVercel) {
+                $server = db_server();
+                $server->exec('CREATE DATABASE IF NOT EXISTS `SHEWA` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+            }
             $database = db();
             $database->exec(
                 "CREATE TABLE IF NOT EXISTS users (
@@ -111,11 +129,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$complete) {
             }
             $database->commit();
 
-            if (file_put_contents($lockFile, "Installed " . date(DATE_ATOM) . PHP_EOL, LOCK_EX) === false) {
+            if (!$isVercel && file_put_contents($lockFile, "Installed " . date(DATE_ATOM) . PHP_EOL, LOCK_EX) === false) {
                 throw new RuntimeException('The setup lock file could not be written. Check folder permissions.');
             }
 
             $complete = true;
+            $error = '';
         } catch (Throwable $exception) {
             if (isset($database) && $database instanceof PDO && $database->inTransaction()) {
                 $database->rollBack();
@@ -147,7 +166,7 @@ $token = csrf_token();
 </head>
 <body>
 <main>
-  <p>LOCAL XAMPP INSTALLATION · DATABASE SHEWA</p>
+  <p><?= $isVercel ? 'VERCEL DEPLOYMENT · MYSQL DATABASE' : 'LOCAL XAMPP INSTALLATION · DATABASE SHEWA' ?></p>
   <h1>Set up your store.</h1>
   <?php if ($complete): ?>
     <div class="success">Setup is complete. Your SHEWA database, sample catalog, and admin account are ready.</div>
@@ -155,14 +174,17 @@ $token = csrf_token();
     <a class="button" href="<?= e(app_url('admin/login.php')) ?>">Go to admin sign in</a>
     <a class="button" href="<?= e(app_url('index.php')) ?>">View storefront</a>
   <?php else: ?>
-    <p>This creates the <strong>SHEWA</strong> database, adds sample products, and creates the first administrator. Setup runs only once. Keep your admin password private.</p>
+    <p><?= $isVercel
+        ? 'This initializes the configured MySQL database, adds sample products, and creates the first administrator. Enter the one-time setup secret saved in your Vercel environment variables.'
+        : 'This creates the <strong>SHEWA</strong> database, adds sample products, and creates the first administrator. Setup runs only once. Keep your admin password private.' ?></p>
     <?php if ($error !== ''): ?><div class="error"><?= e($error) ?></div><?php endif; ?>
     <form method="post">
       <input type="hidden" name="csrf_token" value="<?= e($token) ?>">
+      <?php if ($isVercel): ?><label>Vercel setup secret<input name="setup_secret" type="password" required autocomplete="off"></label><?php endif; ?>
       <label>Administrator name<input name="name" required maxlength="100" autocomplete="name"></label>
       <label>Administrator email<input name="email" type="email" required maxlength="190" autocomplete="email"></label>
       <label>Administrator password (12+ characters)<input name="password" type="password" required minlength="12" autocomplete="new-password"></label>
-      <button type="submit">Create SHEWA database and admin</button>
+      <button type="submit">Create <?= $isVercel ? 'admin account' : 'SHEWA database and admin' ?></button>
     </form>
   <?php endif; ?>
 </main>

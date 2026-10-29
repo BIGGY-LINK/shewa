@@ -3,23 +3,10 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
 
-if (session_status() !== PHP_SESSION_ACTIVE) {
-    ini_set('session.use_strict_mode', '1');
-    ini_set('session.use_only_cookies', '1');
-    session_set_cookie_params([
-        'lifetime' => 0,
-        'path' => '/',
-        'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
-        'httponly' => true,
-        'samesite' => 'Lax',
-    ]);
-    session_start();
-}
-
 function db_server(): PDO
 {
     return new PDO(
-        'mysql:host=' . SHEWA_DB_HOST . ';charset=utf8mb4',
+        'mysql:host=' . SHEWA_DB_HOST . ';port=' . SHEWA_DB_PORT . ';charset=utf8mb4',
         SHEWA_DB_USER,
         SHEWA_DB_PASSWORD,
         [
@@ -36,7 +23,7 @@ function db(): PDO
 
     if (!$connection instanceof PDO) {
         $connection = new PDO(
-            'mysql:host=' . SHEWA_DB_HOST . ';dbname=' . SHEWA_DB_NAME . ';charset=utf8mb4',
+            'mysql:host=' . SHEWA_DB_HOST . ';port=' . SHEWA_DB_PORT . ';dbname=' . SHEWA_DB_NAME . ';charset=utf8mb4',
             SHEWA_DB_USER,
             SHEWA_DB_PASSWORD,
             [
@@ -48,6 +35,66 @@ function db(): PDO
     }
 
     return $connection;
+}
+
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
+    session_name('ewa_luxe_session');
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/',
+        'secure' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https',
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+
+    if (getenv('VERCEL') === '1') {
+        db()->exec(
+            'CREATE TABLE IF NOT EXISTS app_sessions (
+                session_id VARCHAR(128) PRIMARY KEY,
+                session_data MEDIUMBLOB NOT NULL,
+                expires_at INT UNSIGNED NOT NULL,
+                INDEX idx_app_sessions_expires (expires_at)
+            ) ENGINE=InnoDB'
+        );
+
+        session_set_save_handler(
+            static function (string $id): string|false {
+                $query = db()->prepare('SELECT session_data FROM app_sessions WHERE session_id = ? AND expires_at > ?');
+                $query->execute([$id, time()]);
+                $data = $query->fetchColumn();
+
+                return $data === false ? '' : (string) $data;
+            },
+            static function (): bool {
+                return true;
+            },
+            static function (string $id, string $data): bool {
+                $expiresAt = time() + (int) ini_get('session.gc_maxlifetime');
+                $query = db()->prepare(
+                    'INSERT INTO app_sessions (session_id, session_data, expires_at) VALUES (?, ?, ?)
+                     ON DUPLICATE KEY UPDATE session_data = VALUES(session_data), expires_at = VALUES(expires_at)'
+                );
+
+                return $query->execute([$id, $data, $expiresAt]);
+            },
+            static function (string $id): bool {
+                $query = db()->prepare('DELETE FROM app_sessions WHERE session_id = ?');
+
+                return $query->execute([$id]);
+            },
+            static function (int $maxLifetime): int|false {
+                $query = db()->prepare('DELETE FROM app_sessions WHERE expires_at < ?');
+                $query->execute([time()]);
+
+                return $query->rowCount();
+            }
+        );
+    }
+
+    session_start();
 }
 
 function e(string|int|float|null $value): string
