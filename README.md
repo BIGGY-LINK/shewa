@@ -23,6 +23,8 @@ Vercel does not provide an official PHP runtime. This project uses the community
 4. Deploy the project. Open `/setup.php`, enter the setup secret, and create the first admin account. Setup creates the tables and sample catalog inside the database you provisioned.
 5. After setup succeeds, remove `SHEWA_SETUP_SECRET` from the Vercel project settings and redeploy. Then sign in at `/admin/login.php`. Customers register from the storefront.
 
+If the site shows "The store is temporarily unavailable," the PHP function cannot connect to MySQL. Check that the Vercel variables above contain the hosted database's real connection details, that the database allows connections from Vercel, and that the latest deployment was created after saving the variables. Do not use `127.0.0.1` or the XAMPP `root` account in Vercel.
+
 Do not commit database credentials or the setup secret. The Vercel setup endpoint is disabled after an admin account exists. A database user with permission to create tables, indexes, and foreign keys is needed for the initial setup; it can be restricted after initialization if desired. Vercel sessions are stored in the MySQL `app_sessions` table rather than the function's temporary filesystem.
 
 The Vercel PHP runtime is a third-party project, not a Vercel-maintained runtime. Review its current documentation and limits before production use.
