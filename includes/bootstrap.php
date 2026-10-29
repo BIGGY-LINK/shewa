@@ -3,16 +3,6 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
 
-function db_server(): PDO
-{
-    return new PDO(
-        'mysql:host=' . SHEWA_DB_HOST . ';port=' . SHEWA_DB_PORT . ';charset=utf8mb4',
-        SHEWA_DB_USER,
-        SHEWA_DB_PASSWORD,
-        db_options()
-    );
-}
-
 function db_options(): array
 {
     $options = [

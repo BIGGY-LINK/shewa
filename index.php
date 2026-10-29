@@ -1228,7 +1228,7 @@ $csrfToken = csrf_token();
           <div class="shop-filters" id="shop-filters" aria-label="Filter products"></div>
           <div class="product-grid" id="product-grid" aria-live="polite"></div>
           <?php if (!$databaseReady): ?>
-            <p class="store-status" role="status">The store database is not ready. Start XAMPP MySQL and complete <a href="setup.php">local store setup</a>.</p>
+            <p class="store-status" role="status">The catalog database is not ready. Check the hosted MySQL settings in Vercel and complete <a href="setup.php">store setup</a>.</p>
           <?php endif; ?>
         </div>
         <aside class="cart-panel" aria-labelledby="cart-title">

@@ -1,5 +1,0 @@
-Options -Indexes
-
-<FilesMatch "^\.shewa-installed$">
-    Require all denied
-</FilesMatch>
