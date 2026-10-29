@@ -9,12 +9,34 @@ function db_server(): PDO
         'mysql:host=' . SHEWA_DB_HOST . ';port=' . SHEWA_DB_PORT . ';charset=utf8mb4',
         SHEWA_DB_USER,
         SHEWA_DB_PASSWORD,
-        [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::ATTR_EMULATE_PREPARES => false,
-        ]
+        db_options()
     );
+}
+
+function db_options(): array
+{
+    $options = [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES => false,
+    ];
+
+    if (SHEWA_DB_SSL_CA !== '') {
+        $certificatePath = SHEWA_DB_SSL_CA;
+        if (str_starts_with($certificatePath, '-----BEGIN CERTIFICATE-----')) {
+            $certificatePath = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR)
+                . DIRECTORY_SEPARATOR
+                . 'shewa-mysql-ca-' . hash('sha256', $certificatePath) . '.pem';
+            if (!is_file($certificatePath) && file_put_contents($certificatePath, SHEWA_DB_SSL_CA, LOCK_EX) === false) {
+                throw new RuntimeException('Could not write the configured MySQL CA certificate to temporary storage.');
+            }
+        }
+
+        $options[PDO::MYSQL_ATTR_SSL_CA] = $certificatePath;
+        $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
+    }
+
+    return $options;
 }
 
 function db(): PDO
@@ -26,11 +48,7 @@ function db(): PDO
             'mysql:host=' . SHEWA_DB_HOST . ';port=' . SHEWA_DB_PORT . ';dbname=' . SHEWA_DB_NAME . ';charset=utf8mb4',
             SHEWA_DB_USER,
             SHEWA_DB_PASSWORD,
-            [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_EMULATE_PREPARES => false,
-            ]
+            db_options()
         );
     }
 
@@ -61,15 +79,18 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
         );
 
         session_set_save_handler(
+            static function (string $path, string $name): bool {
+                return true;
+            },
+            static function (): bool {
+                return true;
+            },
             static function (string $id): string|false {
                 $query = db()->prepare('SELECT session_data FROM app_sessions WHERE session_id = ? AND expires_at > ?');
                 $query->execute([$id, time()]);
                 $data = $query->fetchColumn();
 
                 return $data === false ? '' : (string) $data;
-            },
-            static function (): bool {
-                return true;
             },
             static function (string $id, string $data): bool {
                 $expiresAt = time() + (int) ini_get('session.gc_maxlifetime');

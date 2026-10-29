@@ -10,8 +10,8 @@
       "status": 404
     },
     {
-      "src": "/.*\\.php$",
-      "dest": "/api/index.php?route=$0"
+      "src": "/(.*\\.php)$",
+      "dest": "/api/index.php?route=$1"
     },
     {
       "src": "/",
